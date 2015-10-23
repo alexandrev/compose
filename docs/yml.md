@@ -315,9 +315,12 @@ port (a random host port will be chosen).
 
     ports:
      - "3000"
+     - "3000-3005"
      - "8000:8000"
+     - "9090-9091:8080-8081"
      - "49100:22"
      - "127.0.0.1:8001:8001"
+     - "127.0.0.1:5000-5010:5000-5010"
 
 ### security_opt
 
@@ -346,11 +349,13 @@ should always begin with `.` or `..`.
 
 ### volumes_from
 
-Mount all of the volumes from another service or container.
+Mount all of the volumes from another service or container, optionally
+specifying read-only access(``ro``) or read-write(``rw``).
 
     volumes_from:
      - service_name
      - container_name
+     - service_name:rw
 
 ### cpu\_shares, cpuset, domainname, entrypoint, hostname, ipc, mac\_address, mem\_limit, memswap\_limit, privileged, read\_only, restart, stdin\_open, tty, user, volume\_driver, working\_dir
 
