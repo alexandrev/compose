@@ -1,11 +1,13 @@
 from __future__ import unicode_literals
 
 from .testcases import DockerClientTestCase
+from compose.cli.docker_client import docker_client
 from compose.config import config
 from compose.const import LABEL_PROJECT
 from compose.container import Container
 from compose.project import Project
 from compose.service import ConvergenceStrategy
+from compose.service import Net
 from compose.service import VolumeFromSpec
 
 
@@ -95,6 +97,23 @@ class ProjectTest(DockerClientTestCase):
         )
         db = project.get_service('db')
         self.assertEqual(db._get_volumes_from(), [data_container.id + ':rw'])
+
+    def test_get_network_does_not_exist(self):
+        self.require_api_version('1.21')
+        client = docker_client(version='1.21')
+
+        project = Project('composetest', [], client)
+        assert project.get_network() is None
+
+    def test_get_network(self):
+        self.require_api_version('1.21')
+        client = docker_client(version='1.21')
+
+        network_name = 'network_does_exist'
+        project = Project(network_name, [], client)
+        client.create_network(network_name)
+        self.addCleanup(client.remove_network, network_name)
+        assert project.get_network()['Name'] == network_name
 
     def test_net_from_service(self):
         project = Project.from_dicts(
@@ -380,6 +399,20 @@ class ProjectTest(DockerClientTestCase):
         self.assertEqual(len(project.get_service('data').containers()), 0)
         self.assertEqual(len(project.get_service('data').containers(stopped=True)), 1)
         self.assertEqual(len(project.get_service('console').containers()), 0)
+
+    def test_project_up_with_custom_network(self):
+        self.require_api_version('1.21')
+        client = docker_client(version='1.21')
+        network_name = 'composetest-custom'
+
+        client.create_network(network_name)
+        self.addCleanup(client.remove_network, network_name)
+
+        web = self.create_service('web', net=Net(network_name))
+        project = Project('composetest', [web], client, use_networking=True)
+        project.up()
+
+        assert project.get_network() is None
 
     def test_unscale_after_restart(self):
         web = self.create_service('web')

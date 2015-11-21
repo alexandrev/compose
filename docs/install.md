@@ -30,13 +30,14 @@ To install Compose, do the following:
 
 3. Go to the <a href="https://github.com/docker/compose/releases" target="_blank">Compose repository release page on GitHub</a>.
 
-4. Follow the instructions from the release page and run the `curl` command in your terminal.
+4. Follow the instructions from the release page and run the `curl` command,
+which the release page specifies, in your terminal.
 
      > Note: If you get a "Permission denied" error, your `/usr/local/bin` directory
      probably isn't writable and you'll need to install Compose as the superuser. Run
      `sudo -i`, then the two commands below, then `exit`.
 
-     The command has the following format:
+     The following is an example command illustrating the format:
 
         curl -L https://github.com/docker/compose/releases/download/VERSION_NUM/docker-compose-`uname -s`-`uname -m` > /usr/local/bin/docker-compose
 
@@ -53,14 +54,21 @@ To install Compose, do the following:
 7. Test the installation.
 
         $ docker-compose --version
-        docker-compose version: 1.4.2
+        docker-compose version: 1.5.0
 
 
 ## Alternative install options
 
 ### Install using pip
 
-    $ sudo pip install -U docker-compose
+Compose can be installed from [pypi](https://pypi.python.org/pypi/docker-compose)
+using `pip`.  If you install using `pip` it is highly recommended that you use a
+[virtualenv](https://virtualenv.pypa.io/en/latest/) because many operating systems
+have python system packages that conflict with docker-compose dependencies. See
+the [virtualenv tutorial](http://docs.python-guide.org/en/latest/dev/virtualenvs/)
+to get started.
+
+    $ pip install docker-compose
 
 
 ### Install as a container
@@ -70,6 +78,13 @@ To install compose as a container run:
 
     $ curl -L https://github.com/docker/compose/releases/download/1.5.0/run.sh > /usr/local/bin/docker-compose
     $ chmod +x /usr/local/bin/docker-compose
+
+## Master builds
+
+If you're interested in trying out a pre-release build you can download a
+binary from https://dl.bintray.com/docker-compose/master/. Pre-release
+builds allow you to try out new features before they are released, but may
+be less stable.
 
 
 ## Upgrading
@@ -111,11 +126,10 @@ To uninstall Docker Compose if you installed using `pip`:
 
 ## Where to go next
 
-- [User guide](/)
+- [User guide](index.md)
+- [Getting Started](gettingstarted.md)
 - [Get started with Django](django.md)
 - [Get started with Rails](rails.md)
 - [Get started with WordPress](wordpress.md)
-- [Command line reference](/reference)
-- [Yaml file reference](yml.md)
-- [Compose environment variables](env.md)
-- [Compose command line completion](completion.md)
+- [Command line reference](./reference/index.md)
+- [Compose file reference](compose-file.md)

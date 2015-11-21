@@ -32,11 +32,16 @@ Docker command-line client. If you're using `docker-machine`, then the `eval "$(
 
 Sets the project name. This value is prepended along with the service name to the container container on start up. For example, if you project name is `myapp` and it includes two services `db` and `web` then compose starts containers named  `myapp_db_1` and `myapp_web_1` respectively.
 
-Setting this is optional. If you do not set this, the `COMPOSE_PROJECT_NAME` defaults to the `basename` of the current working directory.
+Setting this is optional. If you do not set this, the `COMPOSE_PROJECT_NAME`
+defaults to the `basename` of the project directory. See also the `-p`
+[command-line option](docker-compose.md).
 
 ### COMPOSE\_FILE
 
-Specify the file containing the compose configuration. If not provided, Compose looks for a file named  `docker-compose.yml` in the current directory and then each parent directory in succession until a file by that name is found.
+Specify the file containing the compose configuration. If not provided,
+Compose looks for a file named  `docker-compose.yml` in the current directory
+and then each parent directory in succession until a file by that name is
+found. See also the `-f` [command-line option](docker-compose.md).
 
 ### COMPOSE\_API\_VERSION
 
@@ -77,13 +82,8 @@ Configures the time (in seconds) a request to the Docker daemon is allowed to ha
 it failed. Defaults to 60 seconds.
 
 
-## Compose documentation
+## Related Information
 
-- [User guide](/)
-- [Installing Compose](install.md)
-- [Get started with Django](django.md)
-- [Get started with Rails](rails.md)
-- [Get started with WordPress](wordpress.md)
-- [Yaml file reference](yml.md)
-- [Compose environment variables](env.md)
-- [Compose command line completion](completion.md)
+- [User guide](../index.md)
+- [Installing Compose](../install.md)
+- [Compose file reference](../compose-file.md)

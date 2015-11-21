@@ -2,15 +2,15 @@ Docker Compose
 ==============
 ![Docker Compose](logo.png?raw=true "Docker Compose Logo")
 
-*(Previously known as Fig)*
+Compose is a tool for defining and running multi-container Docker applications.
+With Compose, you use a Compose file to configure your application's services.
+Then, using a single command, you create and start all the services
+from your configuration. To learn more about all the features of Compose
+see [the list of features](docs/index.md#features).
 
-Compose is a tool for defining and running multi-container applications with
-Docker. With Compose, you define a multi-container application in a single
-file, then spin your application up in a single command which does everything
-that needs to be done to get it running.
-
-Compose is great for development environments, staging servers, and CI. We don't
-recommend that you use it in production yet.
+Compose is great for development, testing, and staging environments, as well as
+CI workflows. You can learn more about each case in
+[Common Use Cases](#common-use-cases).
 
 Using Compose is basically a three-step process.
 
@@ -33,6 +33,9 @@ A `docker-compose.yml` looks like this:
     redis:
       image: redis
 
+For more information about the Compose file, see the
+[Compose file reference](docs/compose-file.md)
+
 Compose has commands for managing the whole lifecycle of your application:
 
  * Start, stop and rebuild services
@@ -45,6 +48,8 @@ Installation and documentation
 
 - Full documentation is available on [Docker's website](http://docs.docker.com/compose/).
 - If you have any questions, you can talk in real-time with other developers in the #docker-compose IRC channel on Freenode. [Click here to join using IRCCloud.](https://www.irccloud.com/invite?hostname=irc.freenode.net&channel=%23docker-compose)
+- Code repository for Compose is on [Github](https://github.com/docker/compose)
+- If you find any problems please fill out an [issue](https://github.com/docker/compose/issues/new)
 
 Contributing
 ------------
@@ -56,4 +61,4 @@ Want to help build Compose? Check out our [contributing documentation](https://g
 Releasing
 ---------
 
-Releases are built by maintainers, following an outline of the [release process](https://github.com/docker/compose/blob/master/RELEASE_PROCESS.md).
+Releases are built by maintainers, following an outline of the [release process](https://github.com/docker/compose/blob/master/project/RELEASE-PROCESS.md).

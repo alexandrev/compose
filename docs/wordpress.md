@@ -93,12 +93,10 @@ database containers. If you're using [Docker Machine](https://docs.docker.com/ma
 
 ## More Compose documentation
 
-- [User guide](/)
+- [User guide](index.md)
 - [Installing Compose](install.md)
+- [Getting Started](gettingstarted.md)
 - [Get started with Django](django.md)
 - [Get started with Rails](rails.md)
-- [Get started with WordPress](wordpress.md)
-- [Command line reference](/reference)
-- [Yaml file reference](yml.md)
-- [Compose environment variables](env.md)
-- [Compose command line completion](completion.md)
+- [Command line reference](./reference/index.md)
+- [Compose file reference](compose-file.md)

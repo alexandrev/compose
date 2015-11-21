@@ -2,21 +2,25 @@
   "$schema": "http://json-schema.org/draft-04/schema#",
 
   "type": "object",
+  "id": "fields_schema.json",
 
   "patternProperties": {
     "^[a-zA-Z0-9._-]+$": {
       "$ref": "#/definitions/service"
     }
   },
+  "additionalProperties": false,
 
   "definitions": {
     "service": {
+      "id": "#/definitions/service",
       "type": "object",
 
       "properties": {
         "build": {"type": "string"},
         "cap_add": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "cap_drop": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
+        "cgroup_parent": {"type": "string"},
         "command": {
           "oneOf": [
             {"type": "string"},
@@ -39,8 +43,8 @@
             {
               "type": "object",
               "patternProperties": {
-                "^[^-]+$": {
-                  "type": ["string", "number", "boolean"],
+                ".+": {
+                  "type": ["string", "number", "boolean", "null"],
                   "format": "environment"
                 }
               },
@@ -57,14 +61,21 @@
         },
 
         "extends": {
-          "type": "object",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
 
-          "properties": {
-            "service": {"type": "string"},
-            "file": {"type": "string"}
-          },
-          "required": ["service"],
-          "additionalProperties": false
+              "properties": {
+                "service": {"type": "string"},
+                "file": {"type": "string"}
+              },
+              "required": ["service"],
+              "additionalProperties": false
+            }
+          ]
         },
 
         "extra_hosts": {"$ref": "#/definitions/list_or_dict"},
@@ -81,7 +92,6 @@
         "mac_address": {"type": "string"},
         "mem_limit": {"type": ["number", "string"]},
         "memswap_limit": {"type": ["number", "string"]},
-        "name": {"type": "string"},
         "net": {"type": "string"},
         "pid": {"type": ["string", "null"]},
 
@@ -108,6 +118,25 @@
         "security_opt": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "stdin_open": {"type": "boolean"},
         "tty": {"type": "boolean"},
+        "ulimits": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-z]+$": {
+              "oneOf": [
+                {"type": "integer"},
+                {
+                  "type":"object",
+                  "properties": {
+                    "hard": {"type": "integer"},
+                    "soft": {"type": "integer"}
+                  },
+                  "required": ["soft", "hard"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
         "user": {"type": "string"},
         "volumes": {"type": "array", "items": {"type": "string"}, "uniqueItems": true},
         "volume_driver": {"type": "string"},
@@ -141,6 +170,5 @@
       ]
     }
 
-  },
-  "additionalProperties": false
+  }
 }

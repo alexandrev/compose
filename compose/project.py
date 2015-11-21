@@ -5,6 +5,7 @@ import logging
 from functools import reduce
 
 from docker.errors import APIError
+from docker.errors import NotFound
 
 from .config import ConfigurationError
 from .config import get_service_name_from_net
@@ -77,10 +78,12 @@ class Project(object):
     """
     A collection of services.
     """
-    def __init__(self, name, services, client):
+    def __init__(self, name, services, client, use_networking=False, network_driver=None):
         self.name = name
         self.services = services
         self.client = client
+        self.use_networking = use_networking
+        self.network_driver = network_driver
 
     def labels(self, one_off=False):
         return [
@@ -89,11 +92,15 @@ class Project(object):
         ]
 
     @classmethod
-    def from_dicts(cls, name, service_dicts, client):
+    def from_dicts(cls, name, service_dicts, client, use_networking=False, network_driver=None):
         """
         Construct a ServiceCollection from a list of dicts representing services.
         """
-        project = cls(name, [], client)
+        project = cls(name, [], client, use_networking=use_networking, network_driver=network_driver)
+
+        if use_networking:
+            remove_links(service_dicts)
+
         for service_dict in sort_service_dicts(service_dicts):
             links = project.get_links(service_dict)
             volumes_from = project.get_volumes_from(service_dict)
@@ -103,6 +110,7 @@ class Project(object):
                 Service(
                     client=client,
                     project=name,
+                    use_networking=use_networking,
                     links=links,
                     net=net,
                     volumes_from=volumes_from,
@@ -207,6 +215,8 @@ class Project(object):
     def get_net(self, service_dict):
         net = service_dict.pop('net', None)
         if not net:
+            if self.use_networking:
+                return Net(self.name)
             return Net(None)
 
         net_name = get_service_name_from_net(net)
@@ -268,10 +278,10 @@ class Project(object):
         for service in self.get_services(service_names):
             service.restart(**options)
 
-    def build(self, service_names=None, no_cache=False, pull=False):
+    def build(self, service_names=None, no_cache=False, pull=False, force_rm=False):
         for service in self.get_services(service_names):
             if service.can_be_built():
-                service.build(no_cache, pull)
+                service.build(no_cache, pull, force_rm)
             else:
                 log.info('%s uses an image, skipping' % service.name)
 
@@ -280,7 +290,8 @@ class Project(object):
            start_deps=True,
            strategy=ConvergenceStrategy.changed,
            do_build=True,
-           timeout=DEFAULT_TIMEOUT):
+           timeout=DEFAULT_TIMEOUT,
+           detached=False):
 
         services = self.get_services(service_names, include_deps=start_deps)
 
@@ -289,13 +300,17 @@ class Project(object):
 
         plans = self._get_convergence_plans(services, strategy)
 
+        if self.use_networking and self.uses_default_network():
+            self.ensure_network_exists()
+
         return [
             container
             for service in services
             for container in service.execute_convergence_plan(
                 plans[service.name],
                 do_build=do_build,
-                timeout=timeout
+                timeout=timeout,
+                detached=detached
             )
         ]
 
@@ -307,7 +322,7 @@ class Project(object):
                 name
                 for name in service.get_dependency_names()
                 if name in plans
-                and plans[name].action == 'recreate'
+                and plans[name].action in ('recreate', 'create')
             ]
 
             if updated_dependencies and strategy.allows_recreate:
@@ -323,7 +338,7 @@ class Project(object):
         return plans
 
     def pull(self, service_names=None, ignore_pull_failures=False):
-        for service in self.get_services(service_names, include_deps=True):
+        for service in self.get_services(service_names, include_deps=False):
             service.pull(ignore_pull_failures)
 
     def containers(self, service_names=None, stopped=False, one_off=False):
@@ -350,6 +365,29 @@ class Project(object):
 
         return [c for c in containers if matches_service_names(c)]
 
+    def get_network(self):
+        try:
+            return self.client.inspect_network(self.name)
+        except NotFound:
+            return None
+
+    def ensure_network_exists(self):
+        # TODO: recreate network if driver has changed?
+        if self.get_network() is None:
+            log.info(
+                'Creating network "{}" with driver "{}"'
+                .format(self.name, self.network_driver)
+            )
+            self.client.create_network(self.name, driver=self.network_driver)
+
+    def remove_network(self):
+        network = self.get_network()
+        if network:
+            self.client.remove_network(network['Id'])
+
+    def uses_default_network(self):
+        return any(service.net.mode == self.name for service in self.services)
+
     def _inject_deps(self, acc, service):
         dep_names = service.get_dependency_names()
 
@@ -363,6 +401,26 @@ class Project(object):
 
         dep_services.append(service)
         return acc + dep_services
+
+
+def remove_links(service_dicts):
+    services_with_links = [s for s in service_dicts if 'links' in s]
+    if not services_with_links:
+        return
+
+    if len(services_with_links) == 1:
+        prefix = '"{}" defines'.format(services_with_links[0]['name'])
+    else:
+        prefix = 'Some services ({}) define'.format(
+            ", ".join('"{}"'.format(s['name']) for s in services_with_links))
+
+    log.warn(
+        '\n{} links, which are not compatible with Docker networking and will be ignored.\n'
+        'Future versions of Docker will not support links - you should remove them for '
+        'forwards-compatibility.\n'.format(prefix))
+
+    for s in services_with_links:
+        del s['links']
 
 
 class NoSuchService(Exception):

@@ -13,12 +13,12 @@ from requests.exceptions import ReadTimeout
 
 from .. import __version__
 from .. import legacy
+from ..config import ConfigurationError
 from ..config import parse_environment
 from ..const import DEFAULT_TIMEOUT
 from ..const import HTTP_TIMEOUT
 from ..const import IS_WINDOWS_PLATFORM
 from ..progress_stream import StreamOutputError
-from ..project import ConfigurationError
 from ..project import NoSuchService
 from ..service import BuildError
 from ..service import ConvergenceStrategy
@@ -28,6 +28,7 @@ from .command import project_from_options
 from .docopt_command import DocoptCommand
 from .docopt_command import NoSuchCommand
 from .errors import UserError
+from .formatter import ConsoleWarningFormatter
 from .formatter import Formatter
 from .log_printer import LogPrinter
 from .utils import get_version_info
@@ -41,7 +42,7 @@ log = logging.getLogger(__name__)
 console_handler = logging.StreamHandler(sys.stderr)
 
 INSECURE_SSL_WARNING = """
-Warning: --allow-insecure-ssl is deprecated and has no effect.
+--allow-insecure-ssl is deprecated and has no effect.
 It will be removed in a future version of Compose.
 """
 
@@ -58,9 +59,8 @@ def main():
         log.error(e.msg)
         sys.exit(1)
     except NoSuchCommand as e:
-        log.error("No such command: %s", e.command)
-        log.error("")
-        log.error("\n".join(parse_doc_section("commands:", getdoc(e.supercommand))))
+        commands = "\n".join(parse_doc_section("commands:", getdoc(e.supercommand)))
+        log.error("No such command: %s\n\n%s", e.command, commands)
         sys.exit(1)
     except APIError as e:
         log.error(e.explanation)
@@ -80,6 +80,7 @@ def main():
             "If you encounter this issue regularly because of slow network conditions, consider setting "
             "COMPOSE_HTTP_TIMEOUT to a higher value (current value: %s)." % HTTP_TIMEOUT
         )
+        sys.exit(1)
 
 
 def setup_logging():
@@ -91,13 +92,18 @@ def setup_logging():
     logging.getLogger("requests").propagate = False
 
 
-def setup_console_handler(verbose):
-    if verbose:
-        console_handler.setFormatter(logging.Formatter('%(name)s.%(funcName)s: %(message)s'))
-        console_handler.setLevel(logging.DEBUG)
+def setup_console_handler(handler, verbose):
+    if handler.stream.isatty():
+        format_class = ConsoleWarningFormatter
     else:
-        console_handler.setFormatter(logging.Formatter())
-        console_handler.setLevel(logging.INFO)
+        format_class = logging.Formatter
+
+    if verbose:
+        handler.setFormatter(format_class('%(name)s.%(funcName)s: %(message)s'))
+        handler.setLevel(logging.DEBUG)
+    else:
+        handler.setFormatter(format_class())
+        handler.setLevel(logging.INFO)
 
 
 # stolen from docopt master
@@ -117,6 +123,10 @@ class TopLevelCommand(DocoptCommand):
     Options:
       -f, --file FILE           Specify an alternate compose file (default: docker-compose.yml)
       -p, --project-name NAME   Specify an alternate project name (default: directory name)
+      --x-networking            (EXPERIMENTAL) Use new Docker networking functionality.
+                                Requires Docker 1.9 or later.
+      --x-network-driver DRIVER (EXPERIMENTAL) Specify a network driver (default: "bridge").
+                                Requires Docker 1.9 or later.
       --verbose                 Show more output
       -v, --version             Print version and exit
 
@@ -149,7 +159,7 @@ class TopLevelCommand(DocoptCommand):
         return options
 
     def perform_command(self, options, handler, command_options):
-        setup_console_handler(options.get('--verbose'))
+        setup_console_handler(console_handler, options.get('--verbose'))
 
         if options['COMMAND'] in ('help', 'version'):
             # Skip looking up the compose file.
@@ -171,12 +181,15 @@ class TopLevelCommand(DocoptCommand):
         Usage: build [options] [SERVICE...]
 
         Options:
+            --force-rm  Always remove intermediate containers.
             --no-cache  Do not use cache when building the image.
             --pull      Always attempt to pull a newer version of the image.
         """
-        no_cache = bool(options.get('--no-cache', False))
-        pull = bool(options.get('--pull', False))
-        project.build(service_names=options['SERVICE'], no_cache=no_cache, pull=pull)
+        project.build(
+            service_names=options['SERVICE'],
+            no_cache=bool(options.get('--no-cache', False)),
+            pull=bool(options.get('--pull', False)),
+            force_rm=bool(options.get('--force-rm', False)))
 
     def help(self, project, options):
         """
@@ -355,7 +368,6 @@ class TopLevelCommand(DocoptCommand):
                                   allocates a TTY.
         """
         service = project.get_service(options['SERVICE'])
-
         detach = options['-d']
 
         if IS_WINDOWS_PLATFORM and not detach:
@@ -367,20 +379,6 @@ class TopLevelCommand(DocoptCommand):
         if options['--allow-insecure-ssl']:
             log.warn(INSECURE_SSL_WARNING)
 
-        if not options['--no-deps']:
-            deps = service.get_linked_service_names()
-
-            if len(deps) > 0:
-                project.up(
-                    service_names=deps,
-                    start_deps=True,
-                    strategy=ConvergenceStrategy.never,
-                )
-
-        tty = True
-        if detach or options['-T'] or not sys.stdin.isatty():
-            tty = False
-
         if options['COMMAND']:
             command = [options['COMMAND']] + options['ARGS']
         else:
@@ -388,7 +386,7 @@ class TopLevelCommand(DocoptCommand):
 
         container_options = {
             'command': command,
-            'tty': tty,
+            'tty': not (detach or options['-T'] or not sys.stdin.isatty()),
             'stdin_open': not detach,
             'detach': detach,
         }
@@ -420,31 +418,7 @@ class TopLevelCommand(DocoptCommand):
         if options['--name']:
             container_options['name'] = options['--name']
 
-        try:
-            container = service.create_container(
-                quiet=True,
-                one_off=True,
-                **container_options
-            )
-        except APIError as e:
-            legacy.check_for_legacy_containers(
-                project.client,
-                project.name,
-                [service.name],
-                allow_one_off=False,
-            )
-
-            raise e
-
-        if detach:
-            service.start_container(container)
-            print(container.name)
-        else:
-            dockerpty.start(project.client, container.id, interactive=not options['-T'])
-            exit_code = container.wait()
-            if options['--rm']:
-                project.client.remove_container(container.id)
-            sys.exit(exit_code)
+        run_one_off_container(container_options, project, service, options)
 
     def scale(self, project, options):
         """
@@ -561,16 +535,18 @@ class TopLevelCommand(DocoptCommand):
         start_deps = not options['--no-deps']
         service_names = options['SERVICE']
         timeout = int(options.get('--timeout') or DEFAULT_TIMEOUT)
+        detached = options.get('-d')
 
         to_attach = project.up(
             service_names=service_names,
             start_deps=start_deps,
             strategy=convergence_strategy_from_opts(options),
             do_build=not options['--no-build'],
-            timeout=timeout
+            timeout=timeout,
+            detached=detached
         )
 
-        if not options['-d']:
+        if not detached:
             log_printer = build_log_printer(to_attach, service_names, monochrome)
             attach_to_logs(project, log_printer, service_names, timeout)
 
@@ -630,24 +606,86 @@ def convergence_strategy_from_opts(options):
     return ConvergenceStrategy.changed
 
 
+def run_one_off_container(container_options, project, service, options):
+    if not options['--no-deps']:
+        deps = service.get_linked_service_names()
+        if deps:
+            project.up(
+                service_names=deps,
+                start_deps=True,
+                strategy=ConvergenceStrategy.never)
+
+    if project.use_networking:
+        project.ensure_network_exists()
+
+    try:
+        container = service.create_container(
+            quiet=True,
+            one_off=True,
+            **container_options)
+    except APIError:
+        legacy.check_for_legacy_containers(
+            project.client,
+            project.name,
+            [service.name],
+            allow_one_off=False)
+        raise
+
+    if options['-d']:
+        container.start()
+        print(container.name)
+        return
+
+    def remove_container(force=False):
+        if options['--rm']:
+            project.client.remove_container(container.id, force=True)
+
+    def force_shutdown(signal, frame):
+        project.client.kill(container.id)
+        remove_container(force=True)
+        sys.exit(2)
+
+    def shutdown(signal, frame):
+        set_signal_handler(force_shutdown)
+        project.client.stop(container.id)
+        remove_container()
+        sys.exit(1)
+
+    set_signal_handler(shutdown)
+    dockerpty.start(project.client, container.id, interactive=not options['-T'])
+    exit_code = container.wait()
+    remove_container()
+    sys.exit(exit_code)
+
+
 def build_log_printer(containers, service_names, monochrome):
     if service_names:
-        containers = [c for c in containers if c.service in service_names]
+        containers = [
+            container
+            for container in containers if container.service in service_names
+        ]
     return LogPrinter(containers, monochrome=monochrome)
 
 
 def attach_to_logs(project, log_printer, service_names, timeout):
-    print("Attaching to", list_containers(log_printer.containers))
-    try:
-        log_printer.run()
-    finally:
-        def handler(signal, frame):
-            project.kill(service_names=service_names)
-            sys.exit(0)
-        signal.signal(signal.SIGINT, handler)
 
+    def force_shutdown(signal, frame):
+        project.kill(service_names=service_names)
+        sys.exit(2)
+
+    def shutdown(signal, frame):
+        set_signal_handler(force_shutdown)
         print("Gracefully stopping... (press Ctrl+C again to force)")
         project.stop(service_names=service_names, timeout=timeout)
+
+    print("Attaching to", list_containers(log_printer.containers))
+    set_signal_handler(shutdown)
+    log_printer.run()
+
+
+def set_signal_handler(handler):
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
 
 
 def list_containers(containers):

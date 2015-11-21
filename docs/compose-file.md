@@ -1,15 +1,20 @@
 <!--[metadata]>
 +++
-title = "docker-compose.yml reference"
-description = "docker-compose.yml reference"
-keywords = ["fig, composition, compose,  docker"]
+title = "Compose file reference"
+description = "Compose file reference"
+keywords = ["fig, composition, compose, docker"]
+aliases = ["/compose/yml"]
 [menu.main]
 parent="smn_compose_ref"
 +++
 <![end-metadata]-->
 
 
-# docker-compose.yml reference
+# Compose file reference
+
+The compose file is a [YAML](http://yaml.org/) file where all the top level
+keys are the name of a service, and the values are the service definition.
+The default path for a compose file is `./docker-compose.yml`.
 
 Each service defined in `docker-compose.yml` must specify exactly one of
 `image` or `build`. Other keys are optional, and are analogous to their
@@ -18,6 +23,11 @@ Each service defined in `docker-compose.yml` must specify exactly one of
 As with `docker run`, options specified in the Dockerfile (e.g., `CMD`,
 `EXPOSE`, `VOLUME`, `ENV`) are respected by default - you don't need to
 specify them again in `docker-compose.yml`.
+
+## Service configuration reference
+
+This section contains a list of all configuration options supported by a service
+definition.
 
 ### build
 
@@ -43,13 +53,17 @@ See `man 7 capabilities` for a full list.
       - NET_ADMIN
       - SYS_ADMIN
 
-Using `dockerfile` together with `image` is not allowed. Attempting to do so results in an error.
-
 ### command
 
 Override the default command.
 
     command: bundle exec thin -p 3000
+
+### cgroup_parent
+
+Specify an optional parent cgroup for the container.
+
+    cgroup_parent: m-executor-abcd
 
 ### container_name
 
@@ -91,9 +105,13 @@ Custom DNS search domains. Can be a single value or a list.
 
 Alternate Dockerfile.
 
-Compose will use an alternate file to build with.
+Compose will use an alternate file to build with. A build path must also be
+specified using the `build` key.
 
+    build: /path/to/build/dir
     dockerfile: Dockerfile-alternate
+
+Using `dockerfile` together with `image` is not allowed. Attempting to do so results in an error.
 
 ### env_file
 
@@ -150,44 +168,29 @@ accessible to linked services. Only the internal port can be specified.
 Extend another service, in the current file or another, optionally overriding
 configuration.
 
-Here's a simple example. Suppose we have 2 files - **common.yml** and
-**development.yml**. We can use `extends` to define a service in
-**development.yml** which uses configuration defined in **common.yml**:
+You can use `extends` on any service together with other configuration keys.
+The `extends` value must be a dictionary defined with a required `service`
+and an optional `file` key.
 
-**common.yml**
+    extends:
+      file: common.yml
+      service: webapp
 
-    webapp:
-      build: ./webapp
-      environment:
-        - DEBUG=false
-        - SEND_EMAILS=false
+The `service` the name of the service being extended, for example
+`web` or `database`. The `file` is the location of a Compose configuration
+file defining that service.
 
-**development.yml**
+If you omit the `file` Compose looks for the service configuration in the
+current file. The `file` value can be an absolute or relative path. If you
+specify a relative path, Compose treats it as relative to the location of the
+current file.
 
-    web:
-      extends:
-        file: common.yml
-        service: webapp
-      ports:
-        - "8000:8000"
-      links:
-        - db
-      environment:
-        - DEBUG=true
-    db:
-      image: postgres
+You can extend a service that itself extends another. You can extend
+indefinitely. Compose does not support circular references and `docker-compose`
+returns an error if it encounters one.
 
-Here, the `web` service in **development.yml** inherits the configuration of
-the `webapp` service in **common.yml** - the `build` and `environment` keys -
-and adds `ports` and `links` configuration. It overrides one of the defined
-environment variables (DEBUG) with a new value, and the other one
-(SEND_EMAILS) is left untouched.
-
-The `file` key is optional, if it is not set then Compose will look for the
-service within the current file.
-
-For more on `extends`, see the [tutorial](extends.md#example) and
-[reference](extends.md#reference).
+For more on `extends`, see the
+[the extends documentation](extends.md#extending-services).
 
 ### external_links
 
@@ -330,7 +333,19 @@ Override the default labeling scheme for each container.
         - label:user:USER
         - label:role:ROLE
 
-### volumes
+### ulimits
+
+Override the default ulimits for a container. You can either specify a single
+limit as an integer or soft/hard limits as a mapping.
+
+
+      ulimits:
+        nproc: 65535
+        nofile:
+          soft: 20000
+          hard: 40000
+
+### volumes, volume\_driver
 
 Mount paths as volumes, optionally specifying a path on the host machine
 (`HOST:CONTAINER`), or an access mode (`HOST:CONTAINER:ro`).
@@ -344,8 +359,18 @@ You can mount a relative path on the host, which will expand relative to
 the directory of the Compose configuration file being used. Relative paths
 should always begin with `.` or `..`.
 
+If you use a volume name (instead of a volume path), you may also specify
+a `volume_driver`.
+
+    volume_driver: mydriver
+
+
 > Note: No path expansion will be done if you have also specified a
 > `volume_driver`.
+
+See [Docker Volumes](https://docs.docker.com/userguide/dockervolumes/) and
+[Volume Plugins](https://docs.docker.com/extend/plugins_volume/) for more
+information.
 
 ### volumes_from
 
@@ -357,7 +382,7 @@ specifying read-only access(``ro``) or read-write(``rw``).
      - container_name
      - service_name:rw
 
-### cpu\_shares, cpuset, domainname, entrypoint, hostname, ipc, mac\_address, mem\_limit, memswap\_limit, privileged, read\_only, restart, stdin\_open, tty, user, volume\_driver, working\_dir
+### cpu\_shares, cpuset, domainname, entrypoint, hostname, ipc, mac\_address, mem\_limit, memswap\_limit, privileged, read\_only, restart, stdin\_open, tty, user, working\_dir
 
 Each of these is a single value, analogous to its
 [docker run](https://docs.docker.com/reference/run/) counterpart.
@@ -384,8 +409,6 @@ Each of these is a single value, analogous to its
     stdin_open: true
     tty: true
 
-    volume_driver: mydriver
-
 ## Variable substitution
 
 Your configuration options can contain environment variables. Compose uses the
@@ -409,17 +432,24 @@ Both `$VARIABLE` and `${VARIABLE}` syntax are supported. Extended shell-style
 features, such as `${VARIABLE-default}` and `${VARIABLE/foo/bar}`, are not
 supported.
 
-If you need to put a literal dollar sign in a configuration value, use a double
-dollar sign (`$$`).
+You can use a `$$` (double-dollar sign) when your configuration needs a literal
+dollar sign. This also prevents Compose from interpolating a value, so a `$$`
+allows you to refer to environment variables that you don't want processed by
+Compose.
 
+    web:
+      build: .
+      command: "$$VAR_NOT_INTERPOLATED_BY_COMPOSE"
+
+If you forget and use a single dollar sign (`$`), Compose interprets the value as an environment variable and will warn you:
+
+  The VAR_NOT_INTERPOLATED_BY_COMPOSE is not set. Substituting an empty string.
 
 ## Compose documentation
 
-- [User guide](/)
+- [User guide](index.md)
 - [Installing Compose](install.md)
 - [Get started with Django](django.md)
 - [Get started with Rails](rails.md)
 - [Get started with WordPress](wordpress.md)
-- [Command line reference](/reference)
-- [Compose environment variables](env.md)
-- [Compose command line completion](completion.md)
+- [Command line reference](./reference/index.md)

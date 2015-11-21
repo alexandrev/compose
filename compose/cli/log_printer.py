@@ -26,6 +26,7 @@ class LogPrinter(object):
         generators = list(self._make_log_generators(self.monochrome, prefix_width))
         for line in Multiplexer(generators).loop():
             self.output.write(line)
+            self.output.flush()
 
     def _make_log_generators(self, monochrome, prefix_width):
         def no_color(text):
@@ -73,9 +74,13 @@ def build_no_log_generator(container, prefix, color_func):
 
 
 def build_log_generator(container, prefix, color_func):
-    # Attach to container before log printer starts running
-    stream = container.attach(stdout=True, stderr=True,  stream=True, logs=True)
-    line_generator = split_buffer(stream)
+    # if the container doesn't have a log_stream we need to attach to container
+    # before log printer starts running
+    if container.log_stream is None:
+        stream = container.attach(stdout=True, stderr=True,  stream=True, logs=True)
+        line_generator = split_buffer(stream)
+    else:
+        line_generator = split_buffer(container.log_stream)
 
     for line in line_generator:
         yield prefix + line
